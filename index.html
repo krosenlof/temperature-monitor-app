@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TempWatch</title>
+  <meta name="description" content="Monitor outdoor temperature and get notified when your target is reached." />
+  <meta name="theme-color" content="#0a0f1e" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #060b18;
+      --surface: #0d1526;
+      --surface2: #131d33;
+      --accent: #00e5ff;
+      --accent2: #ff6b35;
+      --text: #e8f4f8;
+      --muted: #4a6480;
+      --success: #00ff9d;
+      --warn: #ffcc00;
+      --danger: #ff3d6b;
+      --radius: 16px;
+      --glow: 0 0 40px rgba(0,229,255,0.15);
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Mono', monospace;
+      font-weight: 300;
+      overflow-x: hidden;
+    }
+
+    /* Animated starfield bg */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.4) 0%, transparent 100%),
+        radial-gradient(1px 1px at 80% 10%, rgba(255,255,255,0.3) 0%, transparent 100%),
+        radial-gradient(1px 1px at 50% 70%, rgba(255,255,255,0.2) 0%, transparent 100%),
+        radial-gradient(1px 1px at 10% 80%, rgba(255,255,255,0.3) 0%, transparent 100%),
+        radial-gradient(1px 1px at 90% 60%, rgba(255,255,255,0.2) 0%, transparent 100%),
+        radial-gradient(2px 2px at 35% 15%, rgba(0,229,255,0.3) 0%, transparent 100%),
+        radial-gradient(2px 2px at 65% 85%, rgba(0,229,255,0.2) 0%, transparent 100%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .app {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 20px 48px;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    header {
+      width: 100%;
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 40px;
+      animation: fadeDown 0.6s ease both;
+    }
+
+    .logo {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 2.8rem;
+      letter-spacing: 0.06em;
+      color: var(--accent);
+      text-shadow: 0 0 30px rgba(0,229,255,0.5);
+      line-height: 1;
+    }
+
+    .logo-sub {
+      font-size: 0.65rem;
+      color: var(--muted);
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+    }
+
+    /* Current temp display */
+    .temp-display {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid rgba(0,229,255,0.1);
+      border-radius: var(--radius);
+      padding: 28px 32px;
+      margin-bottom: 24px;
+      position: relative;
+      overflow: hidden;
+      animation: fadeUp 0.6s 0.1s ease both;
+      box-shadow: var(--glow);
+    }
+
+    .temp-display::before {
+      content: '';
+      position: absolute;
+      top: -60px; right: -60px;
+      width: 180px; height: 180px;
+      background: radial-gradient(circle, rgba(0,229,255,0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .temp-label {
+      font-size: 0.6rem;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .temp-value {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 5.5rem;
+      line-height: 1;
+      color: var(--text);
+      letter-spacing: 0.02em;
+      transition: color 0.5s ease;
+    }
+
+    .temp-value.hot { color: var(--accent2); text-shadow: 0 0 40px rgba(255,107,53,0.4); }
+    .temp-value.cold { color: var(--accent); text-shadow: 0 0 40px rgba(0,229,255,0.4); }
+    .temp-value.matched { color: var(--success); text-shadow: 0 0 40px rgba(0,255,157,0.5); }
+
+    .temp-meta {
+      margin-top: 10px;
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    .meta-item {
+      font-size: 0.65rem;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+    }
+
+    .meta-item span {
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    /* Status pill */
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 0.6rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      font-weight: 500;
+      margin-top: 14px;
+      border: 1px solid transparent;
+      transition: all 0.3s ease;
+    }
+
+    .status-pill.idle { background: rgba(74,100,128,0.2); border-color: rgba(74,100,128,0.3); color: var(--muted); }
+    .status-pill.watching { background: rgba(0,229,255,0.08); border-color: rgba(0,229,255,0.25); color: var(--accent); }
+    .status-pill.matched { background: rgba(0,255,157,0.1); border-color: rgba(0,255,157,0.3); color: var(--success); }
+
+    .status-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .status-pill.watching .status-dot {
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    /* Controls */
+    .controls {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius);
+      padding: 28px 32px;
+      margin-bottom: 24px;
+      animation: fadeUp 0.6s 0.2s ease both;
+    }
+
+    .controls h2 {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.1rem;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      margin-bottom: 24px;
+    }
+
+    .field {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.6rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    input[type="number"] {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      color: var(--text);
+      font-family: 'DM Mono', monospace;
+      font-size: 1.4rem;
+      font-weight: 500;
+      padding: 12px 16px;
+      outline: none;
+      transition: border-color 0.2s;
+      -moz-appearance: textfield;
+    }
+    input[type="number"]::-webkit-inner-spin-button { display: none; }
+    input[type="number"]:focus { border-color: var(--accent); }
+
+    .unit-toggle {
+      display: flex;
+      background: var(--surface2);
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.08);
+      overflow: hidden;
+    }
+
+    .unit-btn {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-family: 'DM Mono', monospace;
+      font-size: 0.85rem;
+      font-weight: 500;
+      padding: 12px 18px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .unit-btn.active {
+      background: var(--accent);
+      color: var(--bg);
+    }
+
+    .condition-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .cond-btn {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      color: var(--muted);
+      font-family: 'DM Mono', monospace;
+      font-size: 0.65rem;
+      letter-spacing: 0.08em;
+      padding: 10px 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+    }
+    .cond-btn.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(0,229,255,0.06);
+    }
+
+    .interval-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .int-btn {
+      background: var(--surface2);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      color: var(--muted);
+      font-family: 'DM Mono', monospace;
+      font-size: 0.65rem;
+      letter-spacing: 0.08em;
+      padding: 8px 14px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .int-btn.active {
+      border-color: var(--accent2);
+      color: var(--accent2);
+      background: rgba(255,107,53,0.07);
+    }
+
+    /* Buttons */
+    .btn-primary {
+      width: 100%;
+      padding: 16px;
+      background: var(--accent);
+      color: var(--bg);
+      border: none;
+      border-radius: 12px;
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.2rem;
+      letter-spacing: 0.12em;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 0 30px rgba(0,229,255,0.25);
+    }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 0 40px rgba(0,229,255,0.35); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    .btn-stop {
+      width: 100%;
+      padding: 16px;
+      background: transparent;
+      color: var(--danger);
+      border: 1px solid var(--danger);
+      border-radius: 12px;
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.2rem;
+      letter-spacing: 0.12em;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-stop:hover { background: rgba(255,61,107,0.08); }
+
+    .btn-row {
+      display: flex;
+      gap: 12px;
+      margin-top: 8px;
+    }
+
+    .btn-secondary {
+      flex: 1;
+      padding: 12px;
+      background: var(--surface2);
+      color: var(--muted);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.65rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-secondary:hover { color: var(--text); border-color: rgba(255,255,255,0.15); }
+
+    /* Log */
+    .log-section {
+      width: 100%;
+      animation: fadeUp 0.6s 0.3s ease both;
+    }
+
+    .log-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .log-title {
+      font-size: 0.6rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .log-clear {
+      font-size: 0.55rem;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-family: 'DM Mono', monospace;
+      text-transform: uppercase;
+      text-decoration: underline;
+    }
+
+    .log-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .log-item {
+      background: var(--surface);
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 8px;
+      padding: 10px 14px;
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      font-size: 0.7rem;
+      animation: fadeIn 0.3s ease both;
+    }
+
+    .log-time { color: var(--muted); flex-shrink: 0; }
+    .log-msg { color: var(--text); }
+    .log-item.alert { border-color: rgba(0,255,157,0.3); }
+    .log-item.alert .log-msg { color: var(--success); }
+    .log-item.error .log-msg { color: var(--danger); }
+
+    /* Notification permission banner */
+    .notif-banner {
+      width: 100%;
+      background: rgba(255,204,0,0.08);
+      border: 1px solid rgba(255,204,0,0.25);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      animation: fadeUp 0.4s ease both;
+    }
+    .notif-banner.hidden { display: none; }
+
+    .notif-icon { font-size: 1.3rem; flex-shrink: 0; }
+
+    .notif-text {
+      flex: 1;
+      font-size: 0.68rem;
+      color: var(--warn);
+      line-height: 1.5;
+    }
+
+    .notif-allow {
+      background: var(--warn);
+      color: var(--bg);
+      border: none;
+      border-radius: 8px;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.6rem;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      padding: 8px 14px;
+      cursor: pointer;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    /* Animations */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeDown {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    @keyframes matchFlash {
+      0%, 100% { box-shadow: var(--glow); }
+      50% { box-shadow: 0 0 80px rgba(0,255,157,0.4); }
+    }
+    .temp-display.matched { animation: matchFlash 1.5s ease-in-out 3; }
+
+    /* Scrollbar */
+    .log-list::-webkit-scrollbar { width: 4px; }
+    .log-list::-webkit-scrollbar-track { background: transparent; }
+    .log-list::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 2px; }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">TempWatch</div>
+    <div class="logo-sub">outdoor alert</div>
+  </header>
+
+  <!-- Notification permission banner -->
+  <div class="notif-banner hidden" id="notifBanner">
+    <div class="notif-icon">🔔</div>
+    <div class="notif-text">Enable notifications so we can alert you even when the app is in the background.</div>
+    <button class="notif-allow" id="notifAllow">Allow</button>
+  </div>
+
+  <!-- Current temp -->
+  <div class="temp-display" id="tempDisplay">
+    <div class="temp-label">Current Outside Temp</div>
+    <div class="temp-value" id="tempValue">--°</div>
+    <div class="temp-meta">
+      <div class="meta-item">LOCATION <span id="locationLabel">—</span></div>
+      <div class="meta-item">UPDATED <span id="lastUpdated">—</span></div>
+    </div>
+    <div class="status-pill idle" id="statusPill">
+      <div class="status-dot"></div>
+      <span id="statusText">Idle</span>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <h2>Alert Settings</h2>
+
+    <div class="field">
+      <label>Target Temperature</label>
+      <div class="input-row">
+        <input type="number" id="targetTemp" value="70" min="-60" max="150" />
+        <div class="unit-toggle">
+          <button class="unit-btn active" id="btnF" onclick="setUnit('F')">°F</button>
+          <button class="unit-btn" id="btnC" onclick="setUnit('C')">°C</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Condition</label>
+      <div class="condition-row">
+        <button class="cond-btn active" id="condAbove" onclick="setCondition('above')">Reaches or exceeds target</button>
+        <button class="cond-btn" id="condBelow" onclick="setCondition('below')">Drops to or below target</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Check Interval</label>
+      <div class="interval-row">
+        <button class="int-btn" onclick="setInterval_(10)">10 min</button>
+        <button class="int-btn active" onclick="setInterval_(15)">15 min</button>
+        <button class="int-btn" onclick="setInterval_(30)">30 min</button>
+        <button class="int-btn" onclick="setInterval_(60)">1 hr</button>
+      </div>
+    </div>
+
+    <div id="mainBtnArea">
+      <button class="btn-primary" id="startBtn" onclick="startWatching()">Start Watching</button>
+    </div>
+  </div>
+
+  <!-- Log -->
+  <div class="log-section">
+    <div class="log-header">
+      <div class="log-title">Activity Log</div>
+      <button class="log-clear" onclick="clearLog()">Clear</button>
+    </div>
+    <ul class="log-list" id="logList"></ul>
+  </div>
+</div>
+
+<script>
+  // State
+  let unit = 'F';
+  let condition = 'above';
+  let intervalMinutes = 15;
+  let watchTimer = null;
+  let isWatching = false;
+  let notifGranted = Notification.permission === 'granted';
+
+  // On load
+  window.addEventListener('load', () => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').catch(console.error);
+    }
+    checkNotifPermission();
+    fetchTemp(); // initial read
+    loadState();
+  });
+
+  function loadState() {
+    const saved = localStorage.getItem('tempwatch');
+    if (saved) {
+      const s = JSON.parse(saved);
+      unit = s.unit || 'F';
+      condition = s.condition || 'above';
+      intervalMinutes = s.interval || 15;
+      document.getElementById('targetTemp').value = s.target || 70;
+      setUnit(unit, false);
+      setCondition(condition, false);
+      setInterval_(intervalMinutes, false);
+    }
+  }
+
+  function saveState() {
+    localStorage.setItem('tempwatch', JSON.stringify({
+      unit, condition,
+      interval: intervalMinutes,
+      target: document.getElementById('targetTemp').value
+    }));
+  }
+
+  // Notification permission
+  function checkNotifPermission() {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'default') {
+      document.getElementById('notifBanner').classList.remove('hidden');
+    }
+    document.getElementById('notifAllow').addEventListener('click', async () => {
+      const result = await Notification.requestPermission();
+      notifGranted = result === 'granted';
+      document.getElementById('notifBanner').classList.add('hidden');
+      addLog('Notifications ' + (notifGranted ? 'enabled ✓' : 'blocked — alerts will appear on screen only'));
+    });
+  }
+
+  // Unit toggle
+  function setUnit(u, save = true) {
+    unit = u;
+    document.getElementById('btnF').classList.toggle('active', u === 'F');
+    document.getElementById('btnC').classList.toggle('active', u === 'C');
+    if (save) saveState();
+  }
+
+  // Condition
+  function setCondition(c, save = true) {
+    condition = c;
+    document.getElementById('condAbove').classList.toggle('active', c === 'above');
+    document.getElementById('condBelow').classList.toggle('active', c === 'below');
+    if (save) saveState();
+  }
+
+  // Interval
+  function setInterval_(m, save = true) {
+    intervalMinutes = m;
+    document.querySelectorAll('.int-btn').forEach(b => {
+      b.classList.toggle('active', b.textContent.trim() === (m < 60 ? m + ' min' : '1 hr'));
+    });
+    if (save) saveState();
+  }
+
+  // Fetch temperature from Open-Meteo (free, no key needed)
+  async function fetchTemp() {
+    return new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(async pos => {
+        const { latitude, longitude } = pos.coords;
+        try {
+          const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current_weather=true&temperature_unit=${unit === 'F' ? 'fahrenheit' : 'celsius'}`;
+          const res = await fetch(url);
+          const data = await res.json();
+          const temp = data.current_weather.temperature;
+
+          // Reverse geocode for city name (optional, Open-Meteo doesn't provide it)
+          let locationName = `${latitude.toFixed(2)}, ${longitude.toFixed(2)}`;
+          try {
+            const geo = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`);
+            const gData = await geo.json();
+            locationName = gData.address.city || gData.address.town || gData.address.village || locationName;
+          } catch {}
+
+          updateTempDisplay(temp, locationName);
+          resolve(temp);
+        } catch (e) {
+          addLog('Failed to fetch weather data', 'error');
+          reject(e);
+        }
+      }, err => {
+        addLog('Location access denied — please allow location to use TempWatch', 'error');
+        reject(err);
+      });
+    });
+  }
+
+  function updateTempDisplay(temp, location) {
+    const el = document.getElementById('tempValue');
+    const target = parseFloat(document.getElementById('targetTemp').value);
+
+    el.textContent = `${Math.round(temp)}°${unit}`;
+    document.getElementById('locationLabel').textContent = location;
+    document.getElementById('lastUpdated').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    // Color
+    el.className = 'temp-value';
+    if (temp >= 85) el.classList.add('hot');
+    else if (temp <= 40) el.classList.add('cold');
+
+    return temp;
+  }
+
+  // Start watching
+  async function startWatching() {
+    const target = parseFloat(document.getElementById('targetTemp').value);
+    if (isNaN(target)) { addLog('Please enter a valid target temperature', 'error'); return; }
+    saveState();
+
+    isWatching = true;
+    setWatchingUI(true);
+    addLog(`Watching for temp ${condition === 'above' ? '≥' : '≤'} ${target}°${unit} — checking every ${intervalMinutes < 60 ? intervalMinutes + ' min' : '1 hr'}`);
+
+    // Check immediately
+    await checkAndAlert();
+
+    watchTimer = setInterval(checkAndAlert, intervalMinutes * 60 * 1000);
+  }
+
+  async function checkAndAlert() {
+    try {
+      const temp = await fetchTemp();
+      const target = parseFloat(document.getElementById('targetTemp').value);
+      addLog(`Checked: ${Math.round(temp)}°${unit} (target: ${target}°${unit})`);
+
+      const triggered = condition === 'above' ? temp >= target : temp <= target;
+
+      if (triggered) {
+        triggerAlert(temp, target);
+      }
+    } catch {}
+  }
+
+  function triggerAlert(temp, target) {
+    const msg = `🌡️ TempWatch: It's ${Math.round(temp)}°${unit} outside — your target of ${target}°${unit} has been ${condition === 'above' ? 'reached' : 'hit'}!`;
+
+    addLog(`🎯 TARGET REACHED: ${Math.round(temp)}°${unit}`, 'alert');
+
+    // Update display
+    document.getElementById('tempValue').classList.add('matched');
+    document.getElementById('tempDisplay').classList.add('matched');
+    setStatus('matched', `Target reached! ${Math.round(temp)}°${unit}`);
+
+    // Browser notification
+    if (notifGranted) {
+      new Notification('TempWatch Alert', {
+        body: msg,
+        icon: 'icon-192.png',
+        badge: 'icon-192.png',
+        tag: 'tempwatch-alert'
+      });
+    } else {
+      // Fallback: visible alert
+      setTimeout(() => alert(msg), 100);
+    }
+
+    stopWatching();
+  }
+
+  function stopWatching() {
+    isWatching = false;
+    clearInterval(watchTimer);
+    watchTimer = null;
+    setWatchingUI(false);
+    if (document.getElementById('statusText').textContent !== `Target reached! ...`) {
+      setStatus('idle', 'Idle');
+    }
+  }
+
+  function setWatchingUI(watching) {
+    const area = document.getElementById('mainBtnArea');
+    if (watching) {
+      area.innerHTML = `
+        <button class="btn-stop" onclick="stopWatching()">Stop Watching</button>
+        <div class="btn-row">
+          <button class="btn-secondary" onclick="checkAndAlert()">Check Now</button>
+        </div>`;
+      setStatus('watching', 'Monitoring...');
+    } else {
+      area.innerHTML = `<button class="btn-primary" id="startBtn" onclick="startWatching()">Start Watching</button>`;
+      if (document.getElementById('statusText').textContent === 'Monitoring...') {
+        setStatus('idle', 'Idle');
+      }
+    }
+  }
+
+  function setStatus(type, text) {
+    const pill = document.getElementById('statusPill');
+    pill.className = 'status-pill ' + type;
+    document.getElementById('statusText').textContent = text;
+  }
+
+  // Log
+  function addLog(msg, type = '') {
+    const list = document.getElementById('logList');
+    const li = document.createElement('li');
+    li.className = 'log-item ' + type;
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    li.innerHTML = `<span class="log-time">${time}</span><span class="log-msg">${msg}</span>`;
+    list.prepend(li);
+    while (list.children.length > 50) list.removeChild(list.lastChild);
+  }
+
+  function clearLog() {
+    document.getElementById('logList').innerHTML = '';
+  }
+</script>
+</body>
+</html>
